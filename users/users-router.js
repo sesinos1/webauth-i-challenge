@@ -1,16 +1,20 @@
-const express = require("express");
+const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 
 const Users = require("./users-model");
-const authenticate = require("../users/middle/authenticate-middleware");
+const restricted = require("./middle/authenticate-middleware");
 
-const router = express.Router();
-
+// endpoints
 router.post("/register", (req, res) => {
-  const user = req.body;
-  const hash = bcrypt.hashSync(user.password, 8);
-  user.password = hash;
+  let user = req.body; // making the user require a username and password
 
+  // check if required fields are valid
+  if (!user.username || !user.password) {
+    res.status(404).json({ message: "No username or password submitted." });
+  }
+
+  const hash = bcrypt.hashSync(user.password, 12); // hashing the user password
+  user.password = hash; // setting the user password to the hashed password
   Users.add(user)
     .then(saved => {
       res.status(201).json(saved);
@@ -26,10 +30,13 @@ router.post("/login", (req, res) => {
   Users.findBy({ username })
     .first()
     .then(user => {
-      if (user && bcrypt.compareSync(password, user.password)) {
-        res.status(200).json({ message: "Logged in" });
+      console.log(user);
+      if (username && bcrypt.compareSync(password, user.password)) {
+        req.session.user = user;
+
+        res.status(201).json({ message: "Logged in" });
       } else {
-        res.status(401).json({ message: "you shall not pass!" });
+        res.status(404).json({ message: "You shall not pass!" });
       }
     })
     .catch(err => {
@@ -37,12 +44,19 @@ router.post("/login", (req, res) => {
     });
 });
 
-router.get("/users", (req, res) => {
-    Users.find()
-      .then(users => {
-        res.json(users);
-      })
-      .catch(err => res.send(err));
-  });
-  
-  module.exports = router;
+router.get("/logout", restricted, (req, res) => {
+  if (req.session) {
+    req.session.destroy(err => {
+      if (err) {
+        console.log(err);
+        return res.status(500).json({ message: "There was an error" });
+      }
+
+      res.end();
+    });
+  } else {
+    res.end();
+  }
+});
+
+module.exports = router;
